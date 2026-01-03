@@ -8,7 +8,7 @@ import {
 import { useAuthStore } from '../store/useAuthStore';
 import {
     Plus, Search, MoreVertical, Phone, Video, Users,
-    Smile, Paperclip, Mic, Send, ShieldCheck, Image as ImageIcon, Camera, StopCircle, LogOut, FileText, MapPin, Trash2, X, Edit2, Eraser, UserPlus
+    Smile, Paperclip, Mic, Send, ShieldCheck, Image as ImageIcon, Camera, StopCircle, LogOut, FileText, MapPin, Trash2, X, Edit2, Eraser, UserPlus, Map, AlertTriangle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EmojiPicker, { type EmojiClickData } from 'emoji-picker-react';
@@ -25,7 +25,7 @@ const getUserColor = (userId: string) => {
     return colors[Math.abs(hash) % colors.length];
 };
 
-export default function Chat() {
+export default function Chat({ onOpenMap }: { onOpenMap: () => void }) {
     const { user } = useAuthStore();
     const [chats, setChats] = useState<any[]>([]);
     const [messages, setMessages] = useState<any[]>([]);
@@ -155,8 +155,63 @@ export default function Chat() {
     const handleDeleteChat = async () => { if (!chatContextMenu) return; if (!window.confirm("Bu sohbeti silmek istediğine emin misin?")) return; try { await deleteDoc(doc(db, 'chats', chatContextMenu.chatId)); const msgs = await getDocs(query(collection(db, 'messages'), where('chatId', '==', chatContextMenu.chatId))); const batch = writeBatch(db); msgs.forEach((doc) => batch.delete(doc.ref)); await batch.commit(); toast.success("Silindi"); setChatContextMenu(null); setActiveChat(null); } catch (error) { toast.error("Hata"); } };
     const handleClearHistory = async () => { if (!chatContextMenu) return; if (!window.confirm("Mesajları silmek istediğine emin misin?")) return; try { const msgs = await getDocs(query(collection(db, 'messages'), where('chatId', '==', chatContextMenu.chatId))); const batch = writeBatch(db); msgs.forEach((doc) => batch.delete(doc.ref)); await batch.commit(); await updateDoc(doc(db, 'chats', chatContextMenu.chatId), { lastMessage: '', lastMessageTime: serverTimestamp() }); toast.success("Temizlendi"); setChatContextMenu(null); } catch (error) { toast.error("Hata"); } };
     useEffect(() => { const handleClick = () => { setMsgContextMenu(null); setChatContextMenu(null); }; window.addEventListener('click', handleClick); return () => window.removeEventListener('click', handleClick); }, []);
+    
+    // 🔥 YENİ GÜVENLİ YÜKLEME SİSTEMİ
     const uploadToCloudinary = async (file: Blob, resourceType: 'video' | 'image' | 'raw' | 'auto') => { const formData = new FormData(); formData.append("file", file); formData.append("upload_preset", UPLOAD_PRESET); try { const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`, { method: "POST", body: formData }); const data = await response.json(); return data.secure_url; } catch (error) { throw error; } };
-    const sendFileMessage = async (file: Blob | File, msgType: 'audio' | 'image' | 'file') => { if (!activeChat || !user) return; const toastId = toast.loading('Yükleniyor...'); try { let cloudType: 'video' | 'image' | 'raw' = 'image'; if (msgType === 'audio') cloudType = 'video'; if (msgType === 'file') cloudType = 'raw'; const downloadURL = await uploadToCloudinary(file, cloudType); let textContent = msgType === 'audio' ? '🎤 Sesli Mesaj' : msgType === 'image' ? '📷 Fotoğraf' : `📄 Dosya: ${(file as File).name}`; const senderName = user.displayName || user.email?.split('@')[0] || 'Üye'; await addDoc(collection(db, 'messages'), { chatId: activeChat.id, senderId: user.uid, senderEmail: user.email, senderName: senderName, text: textContent, mediaUrl: downloadURL, type: msgType, fileName: (file as File).name || 'dosya', createdAt: serverTimestamp(), seen: false, isEdited: false, receiverId: activeChat.isGroup ? activeChat.id : activeChat.members.find((id: string) => id !== user.uid) }); await updateDoc(doc(db, 'chats', activeChat.id), { lastMessage: textContent, lastMessageTime: serverTimestamp() }); toast.success('Gönderildi!', { id: toastId }); sendPushNotification(activeChat.id, "LetterChat", `${senderName}: ${textContent}`); } catch (error: any) { toast.error('Hata: ' + error.message, { id: toastId }); } };
+    
+    const sendFileMessage = async (file: Blob | File, msgType: 'audio' | 'image' | 'file') => {
+        if (!activeChat || !user) return;
+        const toastId = toast.loading('Yükleniyor...');
+        
+        try {
+            // 🛑 1. ADIM: UZANTI KONTROLÜ (GÜVENLİK)
+            // Dosyanın adını al, eğer blob ise 'audio.webm' de
+            const fileName = (file as File).name || 'audio.webm';
+            const fileExt = fileName.split('.').pop()?.toLowerCase() || '';
+            const dangerousExtensions = ['exe', 'bat', 'apk', 'sh', 'msi', 'cmd', 'vbs', 'com'];
+
+            // Eğer dosya tehlikeli uzantıya sahipse ENGELLE
+            if (msgType === 'file' && dangerousExtensions.includes(fileExt)) {
+                // Veritabanına uyarı mesajı yaz
+                await addDoc(collection(db, 'messages'), {
+                    chatId: activeChat.id,
+                    senderId: user.uid,
+                    senderEmail: user.email,
+                    senderName: "Sistem Güvenliği",
+                    text: `⚠️ SİSTEM UYARISI: "${fileName}" adlı dosya güvenlik nedeniyle engellendi.`,
+                    type: 'system_alert', // Özel tip
+                    createdAt: serverTimestamp(),
+                    seen: false,
+                    isEdited: false,
+                    receiverId: activeChat.isGroup ? activeChat.id : activeChat.members.find((id: string) => id !== user.uid)
+                });
+                
+                toast.error(`GÜVENLİK: ${fileExt} dosyaları engellendi!`, { id: toastId });
+                return; // 🛑 Yüklemeyi durdur
+            }
+
+            // 🛑 2. ADIM: NORMAL YÜKLEME
+            let cloudType: 'video' | 'image' | 'raw' = 'image';
+            if (msgType === 'audio') cloudType = 'video';
+            if (msgType === 'file') cloudType = 'raw';
+            
+            const downloadURL = await uploadToCloudinary(file, cloudType);
+            
+            // Eğer URL gelmezse (hata olursa) dur
+            if (!downloadURL) throw new Error("Yükleme URL'i alınamadı.");
+
+            let textContent = msgType === 'audio' ? '🎤 Sesli Mesaj' : msgType === 'image' ? '📷 Fotoğraf' : `📄 Dosya: ${fileName}`;
+            const senderName = user.displayName || user.email?.split('@')[0] || 'Üye';
+            
+            await addDoc(collection(db, 'messages'), { chatId: activeChat.id, senderId: user.uid, senderEmail: user.email, senderName: senderName, text: textContent, mediaUrl: downloadURL, type: msgType, fileName: fileName, createdAt: serverTimestamp(), seen: false, isEdited: false, receiverId: activeChat.isGroup ? activeChat.id : activeChat.members.find((id: string) => id !== user.uid) });
+            await updateDoc(doc(db, 'chats', activeChat.id), { lastMessage: textContent, lastMessageTime: serverTimestamp() });
+            toast.success('Gönderildi!', { id: toastId });
+            sendPushNotification(activeChat.id, "LetterChat", `${senderName}: ${textContent}`);
+        } catch (error: any) {
+            toast.error('Hata: ' + error.message, { id: toastId });
+        }
+    };
+
     const handleSendLocation = () => { if (!navigator.geolocation) { toast.error("Tarayıcı desteklemiyor."); return; } navigator.geolocation.getCurrentPosition(async (position) => { const { latitude, longitude } = position.coords; const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`; const senderName = user?.displayName || user?.email?.split('@')[0] || 'Üye'; await addDoc(collection(db, 'messages'), { chatId: activeChat.id, senderId: user!.uid, senderEmail: user!.email, senderName: senderName, text: '📍 Konum', mediaUrl: mapsUrl, type: 'location', createdAt: serverTimestamp(), seen: false, receiverId: activeChat.isGroup ? activeChat.id : activeChat.members.find((id: string) => id !== user!.uid) }); setShowAttachMenu(false); sendPushNotification(activeChat.id, "LetterChat", `${senderName}: 📍 Konum`); }); };
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'file') => { if (e.target.files && e.target.files[0]) { sendFileMessage(e.target.files[0], type); setShowAttachMenu(false); } };
     const startRecording = async () => { try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); const mediaRecorder = new MediaRecorder(stream); mediaRecorderRef.current = mediaRecorder; audioChunksRef.current = []; mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); }; mediaRecorder.onstop = async () => { const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); await sendFileMessage(audioBlob, 'audio'); }; mediaRecorder.start(); setIsRecording(true); } catch (error) { toast.error('Mikrofon izni yok.'); } };
@@ -182,18 +237,20 @@ export default function Chat() {
                         <div className="relative">
                             <button onClick={() => setShowSettingsMenu(!showSettingsMenu)}><MoreVertical className="w-6 h-6" /></button>
                             {showSettingsMenu && (
-                                <div className="absolute right-0 top-10 bg-white shadow-xl rounded-lg py-2 w-48 z-50">
+                                <div className="absolute right-0 top-10 bg-white shadow-xl rounded-lg py-2 w-56 z-50">
                                     <button onClick={() => { setShowProfileModal(true); setShowSettingsMenu(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm">Profil</button>
+                                    <button onClick={() => { setShowSettingsMenu(false); onOpenMap(); }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex items-center gap-2 text-blue-600 font-bold">
+                                        <Map className="w-4 h-4" /> Cihazımı Bul / Alarm
+                                    </button>
                                     {isAdmin && <button onClick={() => { setShowSettingsMenu(false); setShowAdminPanel(true); }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-yellow-600 flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Admin Paneli</button>}
                                     <div className="h-px bg-gray-200 my-1"></div>
-                                    <button onClick={handleLogout} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600 flex items-center gap-2"><LogOut className="w-4 h-4" /> Çıkış Yap</button>
+                                    <button onClick={() => { signOut(auth); toast.success('Çıkış yapıldı'); }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600 flex items-center gap-2"><LogOut className="w-4 h-4" /> Çıkış Yap</button>
                                 </div>
                             )}
                         </div>
                     </div>
                 </div>
-                <div className="p-2 border-b border-gray-100 bg-white"><div className="bg-[#f0f2f5] rounded-lg flex items-center px-4 py-2"><Search className="w-5 h-5 text-gray-500 mr-4" /><input type="text" placeholder="Aratın" className="bg-transparent w-full focus:outline-none text-sm" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div></div>
-
+                <div className="p-2 border-b border-gray-100 bg-white"><div className="bg-[#f0f2f5] rounded-lg flex items-center px-4 py-2"><Search className="w-5 h-5 text-gray-500 mr-4" /><input type="text" placeholder="Aratın" className="bg-transparent w-full focus:outline-none text-sm" onChange={(e) => setSearchQuery(e.target.value)} /></div></div>
                 <div className="flex-1 overflow-y-auto bg-white">
                     {chats.map(chat => (
                         <div key={chat.id} onClick={() => setActiveChat(chat)} onContextMenu={(e) => handleChatRightClick(e, chat)} className={`flex items-center p-3 cursor-pointer hover:bg-[#f5f6f6] border-b border-gray-100 ${activeChat?.id === chat.id ? 'bg-[#f0f2f5]' : ''}`} title={chat.displayEmail || chat.displayName}>
@@ -219,26 +276,39 @@ export default function Chat() {
                             </div>
                         </div>
 
+                        {/* MESAJ LİSTESİ */}
                         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-2 relative" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`, backgroundColor: '#e5ddd5' }}>
                             {filteredMessages.map(msg => {
                                 const isMe = msg.senderId === user?.uid;
                                 return (
                                     <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`} onContextMenu={(e) => handleMsgRightClick(e, msg)}>
-                                        <div className={`max-w-[70%] px-2 py-2 rounded-lg shadow-sm relative cursor-context-menu ${isMe ? 'bg-primary text-white rounded-tr-none' : 'bg-white text-primary rounded-tl-none'}`}>
+                                        <div className={`max-w-[70%] px-2 py-2 rounded-lg shadow-sm relative cursor-context-menu ${isMe ? 'bg-primary text-white rounded-tr-none' : 'bg-white text-primary rounded-tl-none'} ${msg.type === 'system_alert' ? 'bg-red-100 border border-red-400' : ''}`}>
+                                            
+                                            {/* 🔥 UYARI MESAJI İÇİN ÖZEL GÖRÜNÜM */}
+                                            {msg.type === 'system_alert' && (
+                                                <div className="flex items-center gap-2 mb-1 text-red-600 font-bold border-b border-red-200 pb-1">
+                                                    <AlertTriangle className="w-4 h-4" /> <span>GÜVENLİK UYARISI</span>
+                                                </div>
+                                            )}
+
                                             {!isMe && activeChat.isGroup && (<div className="text-xs font-bold mb-1" style={{ color: getUserColor(msg.senderId) }}>{msg.senderName || msg.senderEmail?.split('@')[0] || 'Üye'}</div>)}
                                             {msg.type === 'audio' && <div className="flex items-center gap-2 min-w-[200px]"><audio controls src={msg.mediaUrl} className="w-full h-8" /></div>}
                                             {msg.type === 'image' && <div className="p-1"><img src={msg.mediaUrl} alt="Fotoğraf" className="rounded-lg max-h-60 object-cover" /></div>}
                                             {msg.type === 'file' && <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-black/10 rounded hover:bg-black/20 transition text-inherit no-underline"><FileText className="w-8 h-8" /><div className="text-sm font-bold truncate max-w-[150px]">{msg.fileName || 'Dosya'}</div></a>}
                                             {msg.type === 'location' && <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-1 text-inherit no-underline"><MapPin className="w-6 h-6 text-red-500" /><span className="underline font-bold">Haritada Gör</span></a>}
-                                            {msg.type === 'text' && <p className="px-2">{msg.text}</p>}
-                                            <div className="flex justify-end items-center gap-1 mt-1 px-2">{msg.isEdited && <span className={`text-[9px] italic ${isMe ? 'text-gray-300' : 'text-gray-500'}`}>Düzenlendi</span>}<span className={`text-[10px] opacity-70 ${isMe ? 'text-gray-200' : 'text-gray-400'}`}>{msg.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+                                            
+                                            {/* TEXT veya SYSTEM ALERT MESAJI */}
+                                            {(msg.type === 'text' || msg.type === 'system_alert') && <p className={`px-2 ${msg.type === 'system_alert' ? 'text-red-700 italic' : ''}`}>{msg.text}</p>}
+                                            
+                                            <div className="flex justify-end items-center gap-1 mt-1 px-2">{msg.isEdited && <span className={`text-[9px] italic ${isMe ? 'text-gray-300' : 'text-gray-500'}`}>Düzenlendi</span>}<span className={`text-[10px] opacity-70 ${isMe && msg.type !== 'system_alert' ? 'text-gray-200' : 'text-gray-400'}`}>{msg.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
                                         </div>
                                     </div>
                                 );
                             })}
                             <div ref={messagesEndRef} />
                         </div>
-
+                        
+                        {/* ... Popups ve Input alanı aynı ... */}
                         {msgContextMenu && <div className="fixed bg-white shadow-xl rounded-lg py-2 z-50 w-44 border border-gray-200" style={{ top: msgContextMenu.y, left: msgContextMenu.x }}>{msgContextMenu.type === 'text' && msgContextMenu.senderId === user?.uid && <button onClick={handleEditStart} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700 flex items-center gap-2 text-sm"><Edit2 className="w-4 h-4" /> Düzenle</button>}<button onClick={handleDeleteMessage} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2 text-sm"><Trash2 className="w-4 h-4" /> Herkesten Sil</button><button onClick={() => setMsgContextMenu(null)} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-600 flex items-center gap-2 text-sm"><X className="w-4 h-4" /> İptal</button></div>}
                         {chatContextMenu && <div className="fixed bg-white shadow-xl rounded-lg py-2 z-50 w-52 border border-gray-200" style={{ top: chatContextMenu.y, left: chatContextMenu.x }}><button onClick={handleClearHistory} className="w-full text-left px-4 py-3 hover:bg-orange-50 text-orange-600 flex items-center gap-3 text-sm border-b border-gray-100"><Eraser className="w-4 h-4" /> Geçmişi Temizle</button><button onClick={handleDeleteChat} className="w-full text-left px-4 py-3 hover:bg-red-50 text-red-600 flex items-center gap-3 text-sm font-bold"><Trash2 className="w-4 h-4" /> Kişiyi / Sohbeti Sil</button><button onClick={() => setChatContextMenu(null)} className="w-full text-left px-4 py-3 hover:bg-gray-100 text-gray-600 flex items-center gap-3 text-sm"><X className="w-4 h-4" /> İptal</button></div>}
 
