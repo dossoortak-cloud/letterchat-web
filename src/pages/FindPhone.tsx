@@ -1,11 +1,13 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { auth, db } from '../firebase'; // Senin firebase.ts dosyanı kullanıyoruz
+import { auth, db } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { useAuthStore } from '../store/useAuthStore';
+import { BellRing } from 'lucide-react'; // İkonu ekledik
 
-// 📍 LEAFLET İKON HATASI DÜZELTMESİ (React'te bazen ikon kaybolur)
+// 📍 LEAFLET İKON HATASI DÜZELTMESİ
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
@@ -25,20 +27,30 @@ function ChangeView({ center }: { center: [number, number] }) {
 }
 
 export default function FindPhone() {
+    const { user } = useAuthStore(); // Auth store'dan user'ı al
     const [location, setLocation] = useState<[number, number] | null>(null);
     const [lastSeen, setLastSeen] = useState<string>('');
     const [loading, setLoading] = useState(false);
+    
+    // 🔥 EKLENDİ: Token'ı tutmak için state
+    const [pushToken, setPushToken] = useState<string | null>(null);
 
-    const currentUser = auth.currentUser;
-    const BACKEND_URL = "https://letterchat-server.vercel.app"; // Senin sunucun
+    const BACKEND_URL = "https://letterchat-server.vercel.app";
 
-    // 🔥 1. KONUMU CANLI DİNLE (Firestore)
+    // 🔥 1. KONUMU VE TOKEN'I CANLI DİNLE
     useEffect(() => {
-        if (!currentUser) return;
+        if (!user) return;
 
-        const unsub = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
+        const unsub = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
+                
+                // Token'ı al ve kaydet
+                if (data.pushToken) {
+                    setPushToken(data.pushToken);
+                }
+
+                // Konumu al
                 if (data.lastLocation) {
                     const { latitude, longitude, timestamp } = data.lastLocation;
                     setLocation([latitude, longitude]);
@@ -50,54 +62,40 @@ export default function FindPhone() {
             }
         });
         return () => unsub();
-    }, [currentUser]);
+    }, [user]);
 
-    // 🔥 2. ALARM ÇALDIR (Backend'e İstek)
+    // 🔥 2. ALARM ÇALDIR (GERÇEK FONKSİYON)
     const handleRing = async () => {
-        if (!currentUser) return;
+        if (!pushToken) {
+            alert("Hata: Cihazın bildirim token'ı bulunamadı. Telefondan uygulamaya bir kez giriş yapın.");
+            return;
+        }
 
-        // Kullanıcıdan onay al (Web'de window.confirm kullanabiliriz)
         const confirm = window.confirm("Telefonunda YÜKSEK SESLİ alarm çalacak ve GPS açılacak. Onaylıyor musun?");
         if (!confirm) return;
 
         setLoading(true);
         try {
-            // Kullanıcının token'ını veritabanından almamız lazım veya auth objesinden
-            // Basitlik için veritabanından çekelim:
-            // (Burada veritabanında 'pushToken' kayıtlı olduğunu varsayıyoruz)
-            // Not: Bu kısımda user doc'u zaten dinliyoruz, token'ı state'e de atabiliriz ama
-            // backend isteği için basit fetch yapalım.
-
-            // DİKKAT: Burada sunucuya isteği atıyoruz.
-            // Sunucumuz "token" bekliyor. Token'ı Firestore'dan okuyup göndermeliyiz.
-            // Pratik olsun diye yukarıdaki snapshot içinde token'ı da alabilirsin.
-            // Ama şimdilik sadece mantığı kuruyorum.
-
-            // Hızlı çözüm: Veritabanındaki token'ı okuyalım
-            // (Gerçek projede bunu state içinde tutarız)
-
-            // Simülasyon: Kullanıcının token'ının 'docSnap' içinde geldiğini varsayıyorum.
-            // Bu yüzden handleRing'i useEffect içine veya state'e bağlamak daha doğru olur.
-            // Şimdilik sadece alert verelim:
-
-            alert("Komut gönderiliyor... (Not: Token entegrasyonunu App.tsx içinde yapmalısın)");
-
-            // GERÇEK KOD (Token'ı state'e aldıktan sonra aç):
-            /*
-            await fetch(`${BACKEND_URL}/send-notification`, {
+            const response = await fetch(`${BACKEND_URL}/send-notification`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    token: userPushToken, // State'den gelecek
+                    token: pushToken, // State'den gelen gerçek token
                     title: "🚨 ACİL DURUM",
                     body: "Web panelinden alarm tetiklendi!",
                     data: { type: 'find_phone' }
                 }),
             });
-            */
+
+            if (response.ok) {
+                alert("Sinyal başarıyla gönderildi! Telefon çalıyor...");
+            } else {
+                alert("Sunucu hatası oluştu.");
+            }
 
         } catch (error) {
-            alert("Hata oluştu.");
+            console.error(error);
+            alert("Bağlantı hatası.");
         } finally {
             setLoading(false);
         }
@@ -113,17 +111,17 @@ export default function FindPhone() {
                         {location ? `Son Görülme: ${lastSeen}` : 'Konum bekleniyor...'}
                     </p>
                 </div>
-
-                <button
+                
+                <button 
                     onClick={handleRing}
-                    disabled={loading}
-                    className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full transition-all flex items-center gap-2 animate-pulse"
+                    disabled={loading || !pushToken}
+                    className={`text-white font-bold py-2 px-4 rounded-full transition-all flex items-center gap-2 ${loading || !pushToken ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 animate-pulse'}`}
                 >
-                    {loading ? 'Sinyal Gidiyor...' : '🔊 ALARMI ÇALDIR'}
+                    {loading ? 'Sinyal Gidiyor...' : <><BellRing size={18} /> ALARMI ÇALDIR</>}
                 </button>
             </div>
 
-            {/* HARİTA */}
+            {/* Harita */}
             {location ? (
                 <MapContainer center={location} zoom={15} style={{ height: "100%", width: "100%" }}>
                     <TileLayer
@@ -140,9 +138,11 @@ export default function FindPhone() {
             ) : (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-center">
-                        <div className="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-16 w-16 mb-4 mx-auto"></div>
+                        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mb-4 mx-auto"></div>
                         <h2 className="text-xl text-gray-600">Cihazdan sinyal bekleniyor...</h2>
-                        <p className="text-sm text-gray-400 mt-2">Telefondan konum izninin açık olduğundan emin olun.</p>
+                        <p className="text-sm text-gray-400 mt-2">
+                            {pushToken ? "Telefondan konum izninin açık olduğundan emin olun." : "Cihaz bilgisi bekleniyor..."}
+                        </p>
                     </div>
                 </div>
             )}
