@@ -8,7 +8,7 @@ import {
 import { useAuthStore } from '../store/useAuthStore';
 import {
     Plus, Search, MoreVertical, Phone, Video, Users,
-    Smile, Paperclip, Mic, Send, Image as ImageIcon, Camera, StopCircle, LogOut, FileText, MapPin, Trash2, X, Edit2, Eraser, UserPlus, Map, ShieldCheck
+    Smile, Paperclip, Mic, Send, ShieldCheck, Image as ImageIcon, Camera, StopCircle, LogOut, FileText, MapPin, Trash2, X, Edit2, Eraser, UserPlus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EmojiPicker, { type EmojiClickData } from 'emoji-picker-react';
@@ -25,7 +25,7 @@ const getUserColor = (userId: string) => {
     return colors[Math.abs(hash) % colors.length];
 };
 
-export default function Chat({ onOpenMap }: { onOpenMap: () => void }) {
+export default function Chat() {
     const { user } = useAuthStore();
     const [chats, setChats] = useState<any[]>([]);
     const [messages, setMessages] = useState<any[]>([]);
@@ -60,7 +60,6 @@ export default function Chat({ onOpenMap }: { onOpenMap: () => void }) {
     const docInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
 
-    // Admin Rolünü Kontrol Et
     useEffect(() => {
         if (user) {
             const checkRole = async () => {
@@ -71,7 +70,6 @@ export default function Chat({ onOpenMap }: { onOpenMap: () => void }) {
         }
     }, [user]);
 
-    // Sohbetleri Getir
     useEffect(() => {
         if (!user) return;
         const q = query(collection(db, 'chats'), where('members', 'array-contains', user.uid));
@@ -94,7 +92,6 @@ export default function Chat({ onOpenMap }: { onOpenMap: () => void }) {
         return () => unsubscribe();
     }, [user]);
 
-    // Mesajları Getir
     useEffect(() => {
         if (!activeChat) return;
         const q = query(collection(db, 'messages'), where('chatId', '==', activeChat.id), orderBy('createdAt', 'asc'));
@@ -185,14 +182,8 @@ export default function Chat({ onOpenMap }: { onOpenMap: () => void }) {
                         <div className="relative">
                             <button onClick={() => setShowSettingsMenu(!showSettingsMenu)}><MoreVertical className="w-6 h-6" /></button>
                             {showSettingsMenu && (
-                                <div className="absolute right-0 top-10 bg-white shadow-xl rounded-lg py-2 w-56 z-50">
+                                <div className="absolute right-0 top-10 bg-white shadow-xl rounded-lg py-2 w-48 z-50">
                                     <button onClick={() => { setShowProfileModal(true); setShowSettingsMenu(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm">Profil</button>
-
-                                    {/* 🔥 CİHAZIMI BUL BUTONU */}
-                                    <button onClick={() => { setShowSettingsMenu(false); onOpenMap(); }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex items-center gap-2 text-blue-600 font-bold">
-                                        <Map className="w-4 h-4" /> Cihazımı Bul / Alarm
-                                    </button>
-
                                     {isAdmin && <button onClick={() => { setShowSettingsMenu(false); setShowAdminPanel(true); }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-yellow-600 flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Admin Paneli</button>}
                                     <div className="h-px bg-gray-200 my-1"></div>
                                     <button onClick={handleLogout} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600 flex items-center gap-2"><LogOut className="w-4 h-4" /> Çıkış Yap</button>
