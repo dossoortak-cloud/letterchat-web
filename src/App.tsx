@@ -1,12 +1,13 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 import { getFirestore, collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-// 🔥 FIX: Kullanılmayan 'ImageIcon' silindi
-import { Send, LogOut, Gamepad2, Mic, PlusCircle, X, MapPin, FileText } from 'lucide-react';
+// 🔥 FIX: Kullanılmayan ikonlar silindi
+import { Send, LogOut, Mic, PlusCircle, X, MapPin, FileText, Paperclip, Smile } from 'lucide-react';
+import EmojiPicker from 'emoji-picker-react';
 import './index.css';
 
-// 🔥🔥🔥 BURAYA MOBİLDEKİ FIREBASE AYARLARINI YAPIŞTIRMAYI UNUTMA 🔥🔥🔥
+// 🔥🔥🔥 1. MOBİLDEKİ FIREBASE AYARLARINI BURAYA YAPIŞTIR 🔥🔥🔥
 const firebaseConfig = {
     apiKey: "AIzaSyDELbE1PwhowUDRzjro63slZgh9NUgp_xw",
     authDomain: "letterchatv1.firebaseapp.com",
@@ -16,6 +17,10 @@ const firebaseConfig = {
     appId: "1:294068242272:web:8d2e90b3a0f7b8a9b18005",
     measurementId: "G-Y8PRGJTGGX"
 };
+
+// 🔥🔥🔥 2. MOBİLDEKİ IMAGEKIT AYARLARINI BURAYA YAPIŞTIR 🔥🔥🔥
+const IMAGEKIT_URL_ENDPOINT = "https://ik.imagekit.io/av1wamlkg";
+const IMAGEKIT_PRIVATE_KEY = "private_uparUjYJFlstEvM55APzBBATF4o=";
 
 // Firebase Başlat
 const app = initializeApp(firebaseConfig);
@@ -30,12 +35,15 @@ export default function App() {
     const [messages, setMessages] = useState<any[]>([]);
     const [text, setText] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Login States
+    // States
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [showNewChat, setShowNewChat] = useState(false);
+    const [showEmoji, setShowEmoji] = useState(false);
+    const [uploading, setUploading] = useState(false);
 
     const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
     useEffect(() => { scrollToBottom(); }, [messages]);
@@ -46,27 +54,18 @@ export default function App() {
         return () => unsub();
     }, []);
 
-    // 1. MEVCUT SOHBETLERİ GETİR
+    // Sohbet Listesini Getir
     useEffect(() => {
         if (!user) return;
-
-        const q = query(
-            collection(db, 'chats'),
-            where('members', 'array-contains', user.uid),
-            orderBy('lastMessageTime', 'desc')
-        );
-
+        const q = query(collection(db, 'chats'), where('members', 'array-contains', user.uid), orderBy('lastMessageTime', 'desc'));
         const unsub = onSnapshot(q, (snapshot: any) => {
             const list = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
             setChats(list);
-        }, (error: any) => {
-            console.error("Sohbet Listesi Hatası:", error);
-        });
-
+        }, (error: any) => console.error(error));
         return () => unsub();
     }, [user]);
 
-    // 2. MESAJLARI GETİR
+    // Mesajları Getir
     useEffect(() => {
         if (!activeChat) return;
         const q = query(collection(db, 'messages'), where('chatId', '==', activeChat.id), orderBy('createdAt', 'asc'));
@@ -76,7 +75,7 @@ export default function App() {
         return () => unsub();
     }, [activeChat]);
 
-    // 3. YENİ KİŞİ LİSTESİ
+    // Yeni Kişi Listesi
     const fetchUsers = async () => {
         setShowNewChat(true);
         try {
@@ -106,6 +105,56 @@ export default function App() {
         } catch (e) { console.error(e); }
     };
 
+    // 🔥 WEB UYUMLU IMAGEKIT YÜKLEME FONKSİYONU 🔥
+    const uploadToImageKit = async (file: File) => {
+        setUploading(true);
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("fileName", file.name);
+        formData.append("useUniqueFileName", "true");
+
+        const authHeader = `Basic ${btoa(IMAGEKIT_PRIVATE_KEY + ":")}`;
+
+        try {
+            const response = await fetch(`${IMAGEKIT_URL_ENDPOINT}/api/v1/files/upload`, {
+                method: "POST",
+                headers: { "Authorization": authHeader },
+                body: formData
+            });
+            const data = await response.json();
+            setUploading(false);
+            return data.url;
+        } catch (error) {
+            console.error("Upload Hatası:", error);
+            setUploading(false);
+            return null;
+        }
+    };
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const url = await uploadToImageKit(file);
+
+            if (url) {
+                let type = 'file';
+                if (file.type.startsWith('image/')) type = 'image';
+                else if (file.type.startsWith('audio/')) type = 'audio';
+
+                await addDoc(collection(db, 'messages'), {
+                    chatId: activeChat.id,
+                    senderId: user.uid,
+                    senderName: user.displayName || user.email,
+                    text: type === 'image' ? '📷 Fotoğraf' : file.name,
+                    mediaUrl: url,
+                    type: type,
+                    createdAt: serverTimestamp(),
+                    seen: false
+                });
+            }
+        }
+    };
+
     const handleSend = async () => {
         if (!text.trim() || !activeChat) return;
         try {
@@ -119,6 +168,7 @@ export default function App() {
                 seen: false
             });
             setText("");
+            setShowEmoji(false);
         } catch (error) { console.error(error); }
     };
 
@@ -128,6 +178,11 @@ export default function App() {
         try { await signInWithEmailAndPassword(auth, email, password); }
         catch (err: any) { alert("Giriş başarısız: " + err.message); }
         finally { setLoading(false); }
+    };
+
+    // 🔥 FIX: Emoji event tipi any yapıldı
+    const onEmojiClick = (emojiData: any) => {
+        setText((prev) => prev + emojiData.emoji);
     };
 
     // --- LOGIN EKRANI ---
@@ -147,15 +202,12 @@ export default function App() {
         );
     }
 
-    // --- ANA EKRAN ---
     return (
         <div className="app-container">
             {/* SOL TARA: LISTE */}
             <div className="sidebar">
                 <div className="sidebar-header">
-                    <div className="my-avatar">
-                        {user.email?.charAt(0).toUpperCase()}
-                    </div>
+                    <div className="my-avatar">{user.email?.charAt(0).toUpperCase()}</div>
                     <div style={{ display: 'flex', gap: 15 }}>
                         <div title="Yeni Sohbet" style={{ cursor: 'pointer' }} onClick={fetchUsers}><PlusCircle size={24} color="#555" /></div>
                         <div title="Çıkış Yap" style={{ cursor: 'pointer' }} onClick={() => signOut(auth)}><LogOut size={24} color="#d32f2f" /></div>
@@ -202,10 +254,9 @@ export default function App() {
                             let content = <p style={{ margin: 0 }}>{msg.text}</p>;
 
                             if (msg.type === 'image') content = (<div><img src={msg.mediaUrl} alt="Görsel" style={{ maxWidth: '300px', borderRadius: 8, marginTop: 5 }} />{msg.text !== '📷 Fotoğraf' && <p style={{ margin: '5px 0 0' }}>{msg.text}</p>}</div>);
-                            else if (msg.type === 'audio') content = (<div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Mic size={16} /> <span>Sesli Mesaj (Mobilden Dinle)</span></div>);
+                            else if (msg.type === 'audio') content = (<div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Mic size={16} /> <span>Sesli Mesaj</span></div>);
                             else if (msg.type === 'location') content = (<div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><MapPin size={16} color="red" /> <a href={msg.text} target="_blank" style={{ color: 'blue' }} rel="noreferrer">Konumu Haritada Aç</a></div>);
                             else if (msg.type === 'file') content = (<div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><FileText size={16} /> <a href={msg.mediaUrl} target="_blank" style={{ color: 'blue' }} rel="noreferrer">Dosyayı İndir</a></div>);
-                            else if (msg.type === 'game') content = (<div style={{ textAlign: 'center', fontStyle: 'italic', opacity: 0.8 }}><Gamepad2 size={20} style={{ marginBottom: -5 }} /><br />[Oyun - Mobilden Oyna]</div>);
 
                             return (
                                 <div key={msg.id} className={`message ${isMe ? 'sent' : 'received'}`}>
@@ -218,9 +269,47 @@ export default function App() {
                         <div ref={messagesEndRef} />
                     </div>
 
-                    <div className="input-area">
-                        <input className="chat-input" type="text" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} placeholder="Bir mesaj yazın..." />
-                        <button onClick={handleSend} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8 }}><Send color="#7b13d1" /></button>
+                    {/* INPUT ALANI */}
+                    <div className="input-area" style={{ position: 'relative' }}>
+
+                        {/* EMOJI PANELİ */}
+                        {showEmoji && (
+                            <div style={{ position: 'absolute', bottom: '70px', left: '20px', zIndex: 10 }}>
+                                <EmojiPicker onEmojiClick={onEmojiClick} width={300} height={400} />
+                            </div>
+                        )}
+
+                        {/* GİZLİ DOSYA INPUTU */}
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            style={{ display: 'none' }}
+                            onChange={handleFileSelect}
+                            accept="image/*,video/*,.pdf,.doc,.docx"
+                        />
+
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <button onClick={() => setShowEmoji(!showEmoji)} style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Emoji">
+                                <Smile color="#54656f" />
+                            </button>
+                            <button onClick={() => fileInputRef.current?.click()} style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Dosya Ekle">
+                                <Paperclip color="#54656f" />
+                            </button>
+                        </div>
+
+                        <input
+                            className="chat-input"
+                            type="text"
+                            value={text}
+                            onChange={e => setText(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleSend()}
+                            placeholder={uploading ? "Dosya yükleniyor..." : "Bir mesaj yazın..."}
+                            disabled={uploading}
+                        />
+
+                        <button onClick={handleSend} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8 }}>
+                            {uploading ? <div className="loader">⌛</div> : <Send color="#7b13d1" />}
+                        </button>
                     </div>
                 </div>
             ) : (
@@ -230,7 +319,6 @@ export default function App() {
                 </div>
             )}
 
-            {/* YENİ SOHBET MODALI */}
             {showNewChat && (
                 <div className="modal-overlay">
                     <div className="modal-box">
