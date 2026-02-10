@@ -1,0 +1,220 @@
+﻿/* src/index.css - LETTERCHAT TEMA */
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background-color: #d1d7db;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#root {
+    height: 100%;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(123, 19, 209, 0.3);
+    border-radius: 3px;
+}
+
+/* --- LOGIN EKRANI --- */
+.login-container {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, #7b13d1 0%, #4a0a80 100%);
+}
+
+.login-box {
+    background: white;
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+    text-align: center;
+    width: 380px;
+}
+
+.login-input {
+    width: 100%;
+    padding: 15px;
+    margin: 10px 0;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    box-sizing: border-box;
+    font-size: 16px;
+    outline: none;
+    transition: 0.3s;
+}
+
+    .login-input:focus {
+        border-color: #7b13d1;
+    }
+
+.login-btn {
+    width: 100%;
+    padding: 15px;
+    background: #7b13d1;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 16px;
+    cursor: pointer;
+    transition: 0.2s;
+    margin-top: 10px;
+}
+
+    .login-btn:hover {
+        background: #600ea3;
+    }
+
+/* --- ANA EKRAN --- */
+.app-container {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+    background: white;
+    box-shadow: 0 0 20px rgba(0,0,0,0.1);
+}
+
+/* Sol Taraf (Liste) */
+.sidebar {
+    width: 380px;
+    border-right: 1px solid #e9edef;
+    display: flex;
+    flex-direction: column;
+    background: white;
+}
+
+.sidebar-header {
+    padding: 15px 20px;
+    background: #f0f2f5;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #e9edef;
+}
+
+.chat-item {
+    padding: 15px;
+    border-bottom: 1px solid #f5f6f6;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: 0.2s;
+}
+
+    .chat-item:hover {
+        background: #f9f9f9;
+    }
+
+    .chat-item.active {
+        background: #f3e5f5;
+        border-left: 4px solid #7b13d1;
+    }
+
+.avatar {
+    width: 50px;
+    height: 50px;
+    background: #7b13d1;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+/* Sağ Taraf (Chat) */
+.chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #efeae2;
+    /* WhatsApp tarzı doodle arka planı */
+    background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');
+}
+
+.chat-header {
+    padding: 10px 20px;
+    background: #f0f2f5;
+    border-bottom: 1px solid #e9edef;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.messages-list {
+    flex: 1;
+    padding: 20px 50px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.message {
+    max-width: 60%;
+    padding: 10px 15px;
+    border-radius: 10px;
+    font-size: 15px;
+    line-height: 1.4;
+    position: relative;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+    /* Gelen Mesaj */
+    .message.received {
+        align-self: flex-start;
+        background: white;
+        color: #111b21;
+        border-top-left-radius: 0;
+    }
+
+    /* Giden Mesaj (MOR) */
+    .message.sent {
+        align-self: flex-end;
+        background: #7b13d1;
+        color: white;
+        border-top-right-radius: 0;
+    }
+
+.message-time {
+    font-size: 10px;
+    float: right;
+    margin-top: 5px;
+    margin-left: 10px;
+    opacity: 0.7;
+}
+
+/* Input Alanı */
+.input-area {
+    padding: 15px;
+    background: #f0f2f5;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.chat-input {
+    flex: 1;
+    padding: 15px;
+    border: none;
+    border-radius: 25px;
+    outline: none;
+    font-size: 16px;
+    background: white;
+}
