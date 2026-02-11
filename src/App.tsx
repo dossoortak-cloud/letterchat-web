@@ -4,7 +4,7 @@ import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from
 import { getFirestore, collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 // 🔥 FIX: Kullanılmayan ikonlar silindi
 import { Send, LogOut, Mic, PlusCircle, X, MapPin, FileText, Paperclip, Smile } from 'lucide-react';
-import EmojiPicker from 'emoji-picker-react';
+import { EmojiPicker } from 'emoji-picker-react';
 import './index.css';
 
 // 🔥🔥🔥 1. MOBİLDEKİ FIREBASE AYARLARINI BURAYA YAPIŞTIR 🔥🔥🔥
@@ -337,3 +337,4 @@ export default function App() {
     </div>
   );
 }
+
